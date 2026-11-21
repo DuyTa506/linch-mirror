@@ -229,7 +229,7 @@ async fn firers_racing_locks_held_across_the_wait_fire_each_schedule_once() {
 /// held root: neither fires afterwards, and no call fails.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_schedule_paused_or_deleted_while_its_root_is_held_does_not_fire() {
-    let Some(db) = TestDb::new("pause").await else {
+    let Some(db) = TestDb::new("held_pause").await else {
         return;
     };
     let root = format!("pause{}", std::process::id());
