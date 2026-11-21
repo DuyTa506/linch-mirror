@@ -7,6 +7,8 @@ reflected by `linch.RUN_SCHEMA_VERSION`.
 
 ## Unreleased
 
+## 3.2.0 - 2026-11-22
+
 ### Fixed
 
 - Bash rules treat more shell syntax as unparsed: such a command can still be denied or asked, and
