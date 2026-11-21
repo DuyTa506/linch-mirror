@@ -12,10 +12,11 @@ runs used a shared 64-thread host that also ran other work, so read absolute val
 | | |
 |---|---|
 | Host | 2 x Intel Xeon Silver 4514Y (64 hardware threads), 251 GB RAM, Ubuntu 24.04.4, Linux 7.0.0-34 |
-| Postgres | 16.15, loopback, `max_connections` 100, `synchronous_commit on`, `fsync on` |
+| Postgres | 16.15, loopback, `max_connections` 100 (600 in the container of the full run), `synchronous_commit on`, `fsync on` |
 | Toolchain | rustc 1.99.0, release profile of the repository (`lto = "fat"`, `codegen-units = 1`); Python 3.14.10 for both Python sides |
 | Re-measured run ("final") | `origin/master` `617715b3` (includes the run-start durability fix, the shared tool schema, the SGLang fixes), `linch-server` sha256 `3749f7e79789ac69...`, 2026-11-19, 1-minute load average 2.3 to 9.2 across the rounds, 3 rounds interleaved |
 | Case 6 re-measured run ("case 6 run") | `origin/master` `1da43ee3` (includes the SSE framing rewrite, #211), release builds of `linch-server` and `bench_driver`, Python sides from the same tree with `linch-native` built from `crates/linch-python`, 2026-11-21, 1-minute load average 2.2 to 2.9 across the rounds, 4 rounds alternating side order, every process pinned to one core (see [Stream decoding](#stream-decoding-case-6-case-6-run-4-rounds-of-20-iterations)) |
+| Full re-measure run ("full run") | `origin/master` `baaca380`; release builds of `linch-server` (sha256 `ca72a721dbed860e...`), `bench_driver` and `mcp_stdio_server` made at `1da43ee3` and reused (`linch-rust/crates` and `linch-rust/python` are identical between the two commits, so the binaries are the ones `baaca380` would build); Python sides from the `baaca380` tree with `linch-native` built from `crates/linch-python`; `linch-rust/bench/run_all.py` at its defaults (20 timed iterations, 1 warm-up, one process per cell), every case except 6 and 13 for all three sides; 2026-11-21, 19:52 to 20:20 (+0700), after the audit fixes #208 to #225; nothing pinned to a core; 1-minute load average 1.9 to 3.9 when a case started (never above 4; the benchmark's own processes raise it by about 1; case 14 raised it to 6.5, peak 8.65 in 1-second samples) |
 | Earlier run ("earlier") | `origin/master` `50eda478`, 2026-11-18, load average 1.9 to 6.9, one pass (3 for the memory cells) |
 | Providers | scripted fixtures and loopback servers for every performance and memory number; live providers only in [Scale and live](#scale-and-live) |
 
@@ -32,8 +33,8 @@ Postgres cell.
 
 ### Reproduce
 
-Cases 3, 6, 7 and 14 are the repository's own harness:
-`python bench/run_all.py --out DIR --cases 3,6,7,14 --pg-dsn DSN` with the server binary, the
+Every case except 13 (live) is the repository's own harness:
+`python bench/run_all.py --out DIR --cases 1,2,3,4,5,6,7,8,9,10,11,12,14 --pg-dsn DSN` with the server binary, the
 `bench_driver` example and a Python Linch venv as `linch-rust/bench/README.md` describes. The
 memory probe (one `bench_driver` process, case 14 shape, `VmRSS` sampled every 50 ms, with and
 without `MALLOC_ARENA_MAX=2`), the kill harness, the fault proxy and the load ramps are not in the
@@ -41,69 +42,123 @@ repository. Their methods are described in the sections that use them.
 
 ## Performance against Python Linch
 
-### Loop, tools, startup, concurrency (earlier run, `50eda478`, not re-measured)
+### Loop, tools, startup, concurrency (full run, `baaca380`)
 
-Scripted provider, no network. Per provider turn or per call, median of 20 iterations, one pass.
+Scripted provider, no network. Per provider turn or per call (cold start and the last row as the label says), `median (lowest
+to highest)` over 5 rounds, each round the median of 20 iterations; every round ran the case for the three sides, one process
+per cell, nothing pinned. Square brackets: the earlier run's value (`50eda478`, one pass) that this table replaces; a row without
+brackets had no earlier value. A dagger marks a cell whose lowest and highest round differ by more than 1.4x
+([frequency levels](#frequency-levels-in-the-full-run)).
 
 | Cell | py | rs-client | rs-kernel |
 |---|---|---|---|
-| Loop, memory stores, 10 turns x 1 call | 2.76 ms/turn | 0.20 | 0.044 |
-| Loop, memory stores, 50 turns x 1 call | 3.49 ms/turn | 0.53 | 0.067 |
-| Read / Write / Edit | 4.8 / 4.8 / 5.2 ms/call | 0.39 / 0.20 / 0.26 | 0.20 / 0.17 / 0.17 |
-| Grep / Glob | 5.0 / 4.3 ms/call | 0.67 / 0.67 | 0.38 / 0.41 |
-| Bash | 17.7 ms/call | 1.19 | 1.03 |
-| Grep over 2000 files | 111 ms/call | 12.7 | 12.5 |
-| MCP stdio echo | 4.86 ms/call | 0.68 | 0.71 |
-| Cold start (import, open, first run, exit) | 425 ms | 184 | 11.7 |
-| 16 concurrent sessions of a 10-turn loop | 56 runs/s | 985 | 1986 |
+| Loop, memory stores, 10 turns x 1 call (ms/turn) | 2.73 (2.68 to 2.75) [2.76] | 0.24 (0.15 to 0.30)† [0.20] | 0.044 (0.043 to 0.045) [0.044] |
+| Loop, memory stores, 10 turns x 3 calls (ms/turn) | 3.38 (3.37 to 3.53) | 0.61 (0.41 to 0.71)† | 0.086 (0.086 to 0.095) |
+| Loop, memory stores, 50 turns x 1 call (ms/turn) | 3.44 (2.06 to 3.59)† [3.49] | 0.50 (0.42 to 0.67)† [0.53] | 0.066 (0.041 to 0.073)† [0.067] |
+| Loop, memory stores, 1 turn x 8 calls (ms/turn) | 3.75 (2.21 to 3.88)† | 0.71 (0.68 to 0.94) | 0.12 (0.073 to 0.13)† |
+| Read (ms/call) | 4.69 (4.56 to 5.19) [4.80] | 0.34 (0.33 to 0.40) [0.39] | 0.11 (0.079 to 0.13)† [0.20] |
+| Write (ms/call) | 4.74 (4.69 to 4.91) [4.80] | 0.16 (0.12 to 0.26)† [0.20] | 0.12 (0.11 to 0.14) [0.17] |
+| Edit (ms/call) | 4.86 (4.29 to 5.35) [5.20] | 0.16 (0.14 to 0.20)† [0.26] | 0.14 (0.14 to 0.14) [0.17] |
+| Grep (ms/call) | 4.92 (2.96 to 4.94)† [5.00] | 0.56 (0.44 to 0.66)† [0.67] | 0.22 (0.21 to 0.23) [0.38] |
+| Glob (ms/call) | 4.27 (2.57 to 4.45)† [4.30] | 0.49 (0.29 to 0.53)† [0.67] | 0.20 (0.13 to 0.23)† [0.41] |
+| Bash (ms/call) | 17.5 (16.8 to 17.8) [17.7] | 1.19 (0.99 to 1.30) [1.19] | 0.93 (0.84 to 1.19)† [1.03] |
+| Grep over 2000 files (ms/call) | 110 (108 to 184)† [111] | 13.2 (8.15 to 14.7)† [12.7] | 13.6 (7.62 to 14.2)† [12.5] |
+| MCP stdio echo (ms/call) | 4.74 (2.84 to 4.80)† [4.86] | 0.57 (0.49 to 0.68) [0.68] | 0.67 (0.29 to 0.85)† [0.71] |
+| Cold start: import, open, first run, exit (ms) | 429 (428 to 435) [425] | 205 (200 to 209) [184] | 11.6 (11.5 to 11.8) [11.7] |
+| 16 concurrent sessions of a 10-turn loop (runs/s) | 46 (32 to 54)† [56] | 1186 (950 to 1222) [985] | 2006 (1945 to 2034) [1986] |
 
-The RPC cost of the sidecar (`rs-client` minus `rs-kernel`) was 0.16 to 0.46 ms per turn.
-These rows have short iterations (2 to 27 ms for `rs-client` loops); their spread inside a run
-was 39 to 62 percent, so read them as an order of magnitude.
+The RPC cost of the sidecar (`rs-client` minus `rs-kernel`, case 12, derived inside each round) was 0.20 (0.11 to 0.25) ms per turn at 10 turns x 1 call,
+0.52 (0.32 to 0.61) at 10 x 3, 0.45 (0.35 to 0.60) at 50 x 1 and 0.63 (0.56 to 0.81) at 1 x 8; the earlier run gave 0.16 to 0.46 over the 10 x 1 and 50 x 1 shapes.
+The loop rows have short iterations (2 to 27 ms for `rs-client`); their spread inside a round was 39 to 80 percent for `rs-client`
+(the maximum of 20 iterations over the median, minus 1) and 9 to 17 percent for `py` and 13 to 42 percent for `rs-kernel`, so read the Rust rows as an order of
+magnitude.
 
-### Postgres loops, case 3 (final run)
+#### Compaction, workflows, evals (full run, no earlier value)
+
+Same method, 3 rounds. Workflows, evals and the worker are not exposed by `linch-server` or the client, so `rs-client` has no cell.
+
+| Cell | py | rs-client | rs-kernel |
+|---|---|---|---|
+| Compaction, one run of 15 turns that compacts once (ms/turn) | 3.82 (2.53 to 3.98)† | 0.75 (0.68 to 0.86) | 0.16 (0.16 to 0.17) |
+| Workflow, memory journal (ms/step) | 0.14 (0.14 to 0.14) | n/a | 0.003 (0.003 to 0.003) |
+| Workflow, Postgres journal (ms/step) | 5.09 (4.87 to 5.28) | n/a | 2.05 (2.02 to 2.17) |
+| Evals, 10-case suite (ms/case) | 6.11 (5.83 to 6.14) | n/a | 0.079 (0.076 to 0.080) |
+
+#### Against the earlier values
+
+The earlier values carry no frequency record and no spread, so a cell is called the same when the earlier value lies inside the range of the full run's rounds.
+
+- Same: every `py` cell of cases 1 and 4 and cold start; `rs-client` Read, Write, Bash, MCP and Grep over 2000 files; `rs-kernel` 10 x 1, 50 x 1, Bash, MCP, cold start; the 16-session row on `rs-kernel`; the worker rows (case 7, below).
+- Lower than the earlier value, the earlier value above every round: `rs-kernel` Read, Write, Edit, Grep and Glob (0.54x, 0.72x, 0.81x, 0.57x, 0.49x), `rs-client` Edit and Glob (0.63x, 0.74x). The earlier build (`8a43f6e1`, the commit before the audit fixes) was run on the same harness in alternation with this one, `rs-kernel` only, 6 to 7 rounds at the same core frequency (2.0 GHz): Read 0.125 ms against 0.128, Edit 0.158 against 0.144, Bash 0.96 against 0.97 (ranges overlap, no difference); Write 0.176 (0.169 to 0.188) against 0.132 (0.122 to 0.142), Grep 0.273 (0.198 to 0.285) against 0.221 (0.210 to 0.224), Glob 0.26 (0.20 to 0.43) against 0.205 (0.196 to 0.222), lower on this build. So the earlier build also reads 0.125 for Read where the page said 0.20: the gap to the page is not a change of code, and the page's values most likely come from a different mix of frequency levels.
+- Higher than the earlier value by more than 10% (the cause is not established for any of them):
+  - `rs-client` 10 turns x 1 call: 0.24 against 0.20 ms (1.21x), inside the rounds' range (0.15 to 0.30); in 52 runs of this cell (the 5 rounds above included) (two server builds, with and without a frequency sampler, alternating) it read 0.15 to 0.64 ms, and the server of the build before the audit fixes was not faster in every alternation (pooled medians 0.26 for that build, 0.37 for this one, but in the last series the order was reversed). Not reproducible as a difference between the builds; the cell is dominated by scheduling noise.
+  - `py` 16 concurrent sessions: 46 runs/s against 56 (rounds 32 to 54; per run 17.4 ms at the best iteration of every round against 17.9 ms implied by the page). Python code of `50eda478` and of this build, run alternately (4 rounds each, provenance checked in the output), gave 17.9 to 18.8 ms per run when the core read 3.3 to 3.4 GHz and 26.7 to 30.4 ms at 2.0 GHz for the earlier tree, 17.9 to 19.3 ms and 29.9 ms for this tree. No difference between the two trees; the page's 56 is the 3.4 GHz level.
+  - `py` Postgres loop 10 turns x 1 call: 22.8 against 20.6 ms/turn (1.10x), inside the final run's spread (19.6 to 24.7) and this run's (20.6 to 23.4). Python side only; not tested further.
+  - `rs-client` cold start (case 10): 205 (200 to 209) against 184 ms, every round above the page. The `linch-server` built before the audit fixes (`8a43f6e1`), alternated with this one for 5 rounds: 207.5 ms (one round at 129 ms, a 3.4 GHz round) against 217 ms (207 to 229); so at most about 5% of the gap can come from the server changes since `8a43f6e1`, and the rest (the earlier run's 184 against 207) is unexplained; the interval `50eda478` to `8a43f6e1` was not tested.
+- `rs-kernel` Grep over 2000 files: 13.6 (rounds 7.6 to 14.2) against 12.5 ms, 1.09x, below the 10% line. At 2.0 GHz, the build before the audit fixes read 12.10 ms (11.3 to 12.7, 6 rounds) and this build 12.80 ms (12.6 to 14.1, 5 rounds), +6%; the build at `37a06b2e` (it includes #211 and #209 and none of the later audit fixes) read 12.76 (12.5 to 12.9, 3 rounds). The increase therefore appears at or before `37a06b2e`; which of the two changes it comes from was not isolated (the search path does not use the SSE code, so #209 is the more likely one, a hypothesis only).
+
+#### Frequency levels in the full run
+
+The governor is `powersave` with `intel_pstate` active and cannot be changed from user space; nothing was pinned. In rounds 4 and 5 of cases
+1, 4, 5, 10 and 11 a sampler read `scaling_cur_freq` every 50 ms for the cores on which the side's processes (client, sidecar, Bash
+children) had a thread in state `R`, and kept the highest one per sample. Over the 77 cells run in those two rounds, the median of a cell's
+samples was 2.0 GHz or lower in 66 cells, between 2.2 and 3.0 GHz in 6 and 3.0 GHz or more in 5. A busy core usually stays at the 2.0 GHz base level and
+sometimes runs at 3.4 GHz, and the same code is 1.6x to 1.7x faster at the higher level: `py` Grep over 2000 files read 183.7 and 183.8 ms
+in two rounds and 108.3, 109.7 and 108.2 ms in three (the sampler read 3.2 to 3.4 GHz in the last two), `rs-client` 13.2 and 8.2 ms at 2.0 and 3.4 GHz,
+`py` MCP echo 4.80 and 2.84 ms. Cells under 100 ms have only 1 to 5 samples, and a thread that ran
+for less than one sample interval is not seen, so the level of a short cell is approximate. Rounds 1 to 3 have no per-process frequency record, and
+rounds 4 and 5 ran a `/proc` sampler that used about 20% of one core; their values are inside the range of rounds 1 to 3. Case 14 and the cases with 3 rounds were not sampled per process.
+The earlier values were measured without a frequency record, so a comparison with them crosses unknown levels; where the rounds of a cell straddle both levels (daggers), neither a gain nor a loss against the earlier value can be called.
+
+### Postgres loops, case 3 (full run)
 
 Loop with Postgres stores: every turn commits several times, so the cell is dominated by commit
 latency and the gap to Python shrinks from about 10x to about 1.2x to 1.6x. Milliseconds per
-provider turn, 3 rounds (load 2.3 to 2.7 at the start of each).
+provider turn, `median (lowest to highest)` over 3 rounds (load 1.9, 3.0 and 3.4 at the start of the rounds). Square brackets: the final run's
+value (`617715b3`) that this table replaces. The commit latency of a regular table was not measured in the full run.
 
 | Shape | py | rs-client | rs-kernel |
 |---|---|---|---|
-| 10 turns x 1 call | 20.6 (19.6 to 24.7) | 15.4 (14.6 to 16.4) | 16.4 (13.8 to 17.8) |
-| 10 turns x 3 calls | 31.2 (30.8 to 35.1) | 25.4 (19.2 to 26.6) | 23.1 (19.5 to 27.1) |
-| 50 turns x 1 call | 22.2 (21.3 to 23.0) | 16.3 (14.7 to 16.8) | 16.5 (16.3 to 16.8) |
-| 1 turn x 8 calls | 48.0 (36.9 to 50.8) | 38.2 (36.1 to 38.7) | 34.5 (34.5 to 36.0) |
+| 10 turns x 1 call | 22.8 (20.6 to 23.4) [20.6] | 14.3 (13.6 to 16.5) [15.4] | 16.4 (12.8 to 16.7) [16.4] |
+| 10 turns x 3 calls | 32.7 (24.0 to 34.4)† [31.2] | 18.5 (14.5 to 20.2) [25.4] | 24.7 (17.5 to 26.1)† [23.1] |
+| 50 turns x 1 call | 21.3 (19.3 to 22.3) [22.2] | 14.2 (13.3 to 16.0) [16.3] | 14.7 (12.2 to 15.4) [16.5] |
+| 1 turn x 8 calls | 45.5 (38.5 to 51.0) [48.0] | 34.1 (32.3 to 34.7) [38.2] | 34.4 (32.8 to 36.9) [34.5] |
 
-Writes per run (tuples, 10x1 / 10x3 / 50x1 / 1x8): py 203 / 283 / 923 / 69, linch-rust 190 /
-270 / 870 / 65. Against the earlier run, which had its own repeat at load 2.2 (py 19.3 / 30.3 /
-21.6 / 52.4, rs-client 16.2 / 24.9 / 17.0 / 38.4, rs-kernel 16.0 / 23.0 / 18.1 / 34.4), no cell
-moved outside the spread.
+Writes per run (tuples, 10x1 / 10x3 / 50x1 / 1x8), unchanged: py 203 / 283 / 923 / 69, linch-rust 190 /
+270 / 870 / 65. Against the final run no cell moved outside its spread; `rs-client` 10 x 3 (18.5 against 25.4) and 1 x 8 (34.1 against
+38.2) and `rs-kernel` 50 x 1 (14.7 against 16.5) are below the final run's range and `py` 10 x 1 (22.8 against 20.6) is 10% above its value,
+inside its range; Postgres cells depend on commit latency of the hour.
 
-### Worker queue, case 7 (final run)
+### Worker queue, case 7 (full run)
 
-100 jobs per iteration on Postgres. The client does not expose the worker, so `rs-client` has no
-cell. Jobs per second: py 94 (91 to 115), rs-kernel 271 (232 to 271). The earlier single pass read
-117 and 353; both sides read lower now by a similar share (rs-kernel over py: 3.0x earlier, 2.9x now),
-which points to the host or Postgres load of the hour (commit p50 1.8 to 3.9 ms across the three rounds), not a
-change in either side.
+100 jobs per iteration on Postgres, 3 rounds. The client does not expose the worker, so `rs-client` has no
+cell. Jobs per second, `median (lowest to highest)`: py 92 (85 to 102), rs-kernel 262 (257 to 278). The final run read 94 (91 to 115) and 271 (232 to 271), the earlier
+single pass 117 and 353; rs-kernel over py is 2.9x now, as in the final run (2.9x) and 3.0x in the earlier run.
 
-### Concurrent sessions on Postgres, case 14 (final run)
+### Concurrent sessions on Postgres, case 14 (full run)
 
 M sessions started at once on one agent, 4 turns each, a 1 s provider delay per turn (ideal run
-time 4 s), Postgres stores. Run wall p50 in seconds and turns per second (4 x M over the window).
+time 4 s), Postgres stores. One pass of the harness (20 timed iterations do not apply: each cell is one run of M sessions), run wall p50 in seconds and turns per second
+(4 x M over the window); square brackets: the final run's value (median of 3 rounds). The pass took 9 minutes, 0 failed runs in all 19 rows,
+the chat server's p99 was 1.6 to 2.3 ms in every row. The host's 1-minute load average was 2.7 at the start, 6.5 at the end and 8.65 at its peak
+(1-second samples); most of the rise is this case's own processes (16 chat servers, the side and its sidecars).
 
 | M | py | rs-client | rs-kernel | rs-client, 4 sidecars |
 |---|---|---|---|---|
-| 100 | 4.97 s, 73/s | 4.35 s, 91/s | 4.20 s, 95/s | 4.15 s, 96/s |
-| 500 | 13.4 s, 89/s | 5.47 s, 351/s | 4.59 s, 424/s | 4.51 s, 439/s |
-| 1000 | 25.0 s, 85/s | 7.46 s, 484/s | 5.34 s, 694/s | 4.83 s, 800/s |
-| 2000 | 46.5 s, 89/s | 10.5 s, 686/s | 6.25 s, 1078/s | 5.76 s, 1308/s |
+| 100 | 5.24 s, 68/s [4.97 s, 73/s] | 4.35 s, 91/s [4.35 s, 91/s] | 4.23 s, 94/s [4.20 s, 95/s] | 4.17 s, 95/s [4.15 s, 96/s] |
+| 500 | 15.8 s, 82/s [13.4 s, 89/s] | 5.50 s, 352/s [5.47 s, 351/s] | 4.49 s, 432/s [4.59 s, 424/s] | 4.48 s, 440/s [4.51 s, 439/s] |
+| 1000 | 23.5 s, 86/s [25.0 s, 85/s] | 6.82 s, 528/s [7.46 s, 484/s] | 5.10 s, 732/s [5.34 s, 694/s] | 4.98 s, 789/s [4.83 s, 800/s] |
+| 2000 | 40.9 s, 96/s [46.5 s, 89/s] | 10.1 s, 712/s [10.5 s, 686/s] | 6.05 s, 1129/s [6.25 s, 1078/s] | 5.42 s, 1333/s [5.76 s, 1308/s] |
 
-Ranges over the 3 rounds are in `finalbench/RESULTS.md` of the run record; the widest are
+With the caps raised (M=2000): py 46.4 s, 87/s; rs-client 10.1 s, 716/s; rs-kernel 6.06 s, 1174/s. The p99 of Python's run wall is 1.5x to 2x its p50 from
+M=500 (24.0 s against 15.8 s; 82.1 s against 40.9 s at M=2000). Python's 15.8 s at M=500 is 18% above the final run's 13.4 s, and its M=2000 value is 12% below
+(40.9 s here, 46.4 s with the caps raised in the same pass): a single pass cannot tell these from run-to-run variation, and the final run gave no range for Python.
+No other cell is more than 10% from the final run's value.
+
+The final run's ranges: the widest were
 `rs-kernel` at M=1000 (5.08 to 13.11 s: one round overlapped with other work on the host, the other two
 read 5.1 and 5.3 s) and `rs-client` at M=1000 (6.85 to 8.59 s). Python saturates its event loop at about 85
-to 90 turns per second from M=500 up (CPU 20.7 s at M=500, 87.6 s at M=2000); linch-rust keeps scaling.
-There were 0 failed runs in every cell of every round.
+to 96 turns per second from M=500 up (CPU 22.6 s at M=500, 81.6 s at M=2000); linch-rust keeps scaling.
 
 ### Stream decoding, case 6 (case 6 run, 4 rounds of 20 iterations)
 
@@ -178,6 +233,8 @@ sidecar for `rs-client`), median (range) over 3 rounds, and the same divided by 
 | 500 | 159 MB (156 to 160), 0.32 MB/session | 136 MB (135 to 139), 0.27 | 134 MB (128 to 134), 0.27 | 159 / 255 / 277 MB |
 | 1000 | 186 MB (182 to 186), 0.19 | 227 MB (224 to 228), 0.23 | 248 MB (239 to 252), 0.25 | 185 / 477 / 526 MB |
 | 2000 | 244 MB (239 to 244), 0.12 | 411 MB (406 to 421), 0.21 | 478 MB (463 to 502), 0.24 | 242 / 914 / 1021 MB |
+
+The full run's single pass of the same cells (case 14 above, peak resident memory of the process tree): M=500 py 156, rs-client 138, rs-kernel 139 MB; M=1000 185, 232, 239 MB; M=2000 246, 421, 488 MB. Each is inside the final run's range or at most 4% above its upper end.
 
 The difference between the two runs on the Rust sides comes from one change: `ToolDefinition.input_schema`
 is now an `Arc` shared by the registry, the catalog, the logged prefix and every request, so a session no
@@ -323,6 +380,7 @@ The `cache_salt` field itself was not captured on the wire; the evidence is the 
   frequency, so its 594 against 295 ms mixes the two levels; the Anthropic row was
   re-measured with the level recorded per iteration. In the case 6 run (section above) the core's median was 3.40 GHz in every cell and no cell split in two; why the earlier runs did split is not determined. Why HWP holds a busy core at base for seconds is not
   determined (it needs root tooling: MSRs, `turbostat`).
+- In the full run the two levels appear outside case 6 as well: loops, tools, MCP, compaction and the 16-session row move 1.4x to 1.7x between rounds on all three sides, with the sampled core at 2.0 GHz in the slow rounds and 3.2 to 3.4 GHz in the fast ones (see [Frequency levels](#frequency-levels-in-the-full-run)). The cause is still the one above: not determined.
 - Method: a benchmark cell must record the CPU frequency level per iteration and compare at equal level.
 - Case 6 client path against the kernel, profiled on a build before #211 and not repeated since (3.4 GHz, 64 KiB pipe, 30 iterations per rung, medians). The
   earlier hypothesis that the cost follows the number of JSON-RPC messages is refuted for this case. A run sends
@@ -362,7 +420,11 @@ The `cache_salt` field itself was not captured on the wire; the evidence is the 
 ### Not measured or weak
 
 - Case 6 (all five vendors) was re-measured on `1da43ee3` at one frequency band, replacing the earlier cells. Not measured there: one build before and after #211 (so the effect of the framing rewrite is not isolated), the replay server on a separate core from the side under test, `rs-client` with its client and sidecar on separate cores at 3.4 GHz, and the client-path profile above after #211. Where inside a cell the sub-3.3 GHz samples fall was not recorded.
-- Loop, tools, startup, 16-session throughput and the other decode providers are one pass from the earlier run.
+- Frequency levels: in the full run's cells a busy core is at 2.0 GHz or 3.4 GHz and the cells flagged with a dagger straddle both; only rounds 4 and 5 of cases 1, 4, 5, 10 and 11 have a per-process frequency record, from a 50 ms sampler that cannot see short cells well. Cases 2, 3, 7, 8 and 9 (3 rounds each) and case 14 (one pass) have none. The earlier values the full run is compared with have none either, so a difference of up to 1.7x in a cell cannot be assigned to the code.
+- Cases 2, 8 and 9 (compaction, workflows, evals) had no earlier value; their numbers are a first measurement and cannot be judged against the 10% rule. The 10 x 3 and 1 x 8 loop shapes and the per-shape RPC overhead likewise had none.
+- Case 14 in the full run is one pass (the final run had 3), at a load that reached 8.65; Python's M=500 and M=2000 cells differ 18% and 12% from the final run in opposite directions.
+- Case 13 (live DeepSeek) was not run (no key). Case 6 was not run again; its section above is from the case 6 run.
+- The full run used binaries built at `1da43ee3` (identical crates to `baaca380`) and a Postgres container with `max_connections` 600 instead of 100.
 - The idle-agent table is memory stores only; the Postgres-store memory cells (backends per agent, pool size) were not repeated in the final run. The memory of a run in flight and of an agent that has run once cannot be told apart in these data: the peak equals the after-runs figure.
 - Single-sample cells: vLLM and SGLang ramps at N=512 and 1024, every DeepSeek and vLLM load point, the cache-salt check (one run per row), the `SIGTERM` and fault rows (one pass).
 - Postgres-bound cells depend on commit latency and ran on a host that also served other work. No quiet-machine run exists.
