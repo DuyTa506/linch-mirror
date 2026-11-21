@@ -6,6 +6,8 @@ package `linch` has its own [changelog](../CHANGELOG.md).
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-22
+
 ### Upgrading
 
 - **Bash allow rules and file redirects.** An allow rule narrower than `*` no longer covers a command that writes a file (`echo x > f`): the call asks, and with no approval callback an ask is a refusal. `*` still covers it; `2>&1` and `/dev/null` are not files. Deny and ask rules are unchanged.
