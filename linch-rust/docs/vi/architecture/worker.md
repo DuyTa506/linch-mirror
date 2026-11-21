@@ -282,18 +282,26 @@ kích hoạt này, hoặc sau bây giờ khi tick đó cũng đã qua, tất c�
   `schedule:{id}:{fire time}`; có `session_id`, mỗi lần kích hoạt là một run mới trong đó.
 - Một timing đã lưu mà không còn parse được sẽ tạm dừng lịch của nó (có ghi log) thay vì
   chặn các lịch khác.
-- **Một lock root đang bị giữ làm worker chậm tối đa 750 ms.** Các root bị giới hạn của batch
-  được khóa theo thứ tự đã sắp xếp bằng advisory lock có chờ, nên lần kích hoạt chờ đến lượt
-  sau các lời gọi `enqueue` của root, như chúng chờ nhau, nhưng transaction đặt `lock_timeout`
-  là 250 ms (`begin_bounded`). Một root mà lúc đó lock vẫn bị giữ (một `enqueue` chậm của root
-  đó) làm vòng đó rollback và không giữ lại gì, và lời gọi chọn lại mà không có root đó: các lịch
-  của nó không chiếm chỗ trong batch 64 lịch, vẫn đến hạn, và kích hoạt đúng một lần ở một lời
-  gọi sau, còn các root khác kích hoạt ngay trong lời gọi này. Một lời gọi chạy tối đa ba vòng
-  (`FIRE_ROUNDS`), nên chờ tối đa 750 ms, và các root vẫn bị giữ sau đó chờ lời gọi kế tiếp; mọi
-  lần chờ lock khác trong lời gọi kết thúc nó với 0 và không giữ lại gì. Một root cứ bị giữ sẽ bị
-  bỏ qua ở mỗi lời gọi, có ghi log mức `info`. Worker poll các hàng đợi ngay sau đó, nên không
-  hàng đợi nào phải chờ bên đang giữ lock. Khóa advisory không chứa tên schema: bên giữ ở một
-  schema khác của cùng database cũng được tính là bên giữ.
+- **Một lock root đang bị giữ làm worker chậm khoảng 250 ms, dù có bao nhiêu root bị giữ.** Một
+  lời gọi kích hoạt theo hai giai đoạn. Trước hết, trong các vòng riêng, các lịch đến hạn của
+  mọi root có lock rảnh: root không có cap, và root có cap mà `pg_try_advisory_xact_lock` lấy
+  được advisory lock ngay; ở đây không chờ lock nào, nên mọi root không bị giữ đều kích hoạt
+  trong mọi lời gọi. Một root có cap mà transaction khác đang giữ lock bị loại khỏi vòng đó và
+  khỏi lần chọn kế tiếp (tối đa ba vòng, `FIRE_ROUNDS`), nên các root bị giữ không chiếm chỗ
+  trong batch 64 lịch trước các root khác. Sau đó một trong các root bị loại, được chọn ngẫu
+  nhiên để không root nào bị bỏ đói sau các root khác, chờ trong hàng đợi lock của root như một
+  lời gọi `enqueue`, trong transaction riêng với `lock_timeout` 250 ms (`begin_bounded`); nếu
+  lúc đó lock vẫn chưa tới lượt nó, các lịch của nó vẫn đến hạn và kích hoạt đúng một lần ở một
+  lời gọi sau. Thời gian thêm của một lời gọi tối đa là một lần chờ đó, không phụ thuộc số root
+  bị giữ, và một lời gọi mà mọi root đều rảnh không chạy thêm câu lệnh nào so với trước. Mỗi vòng
+  tự commit; mọi lần chờ lock khác trong một vòng kết thúc vòng đó sau 250 ms. Một root cứ bị giữ
+  sẽ bị bỏ qua ở phần lớn các lời gọi, có ghi log mức `info`. Worker poll các hàng đợi ngay sau
+  đó, nên không hàng đợi nào phải chờ bên đang giữ lock. Khóa advisory không chứa tên schema:
+  bên giữ ở một schema khác của cùng database cũng được tính là bên giữ. Giới hạn đã biết: khi
+  lưu lượng `enqueue` liên tục vào một root có cap nặng đến mức hàng đợi lock kéo dài quá 250 ms
+  (đo được với 64 client trên 20.000 job tồn đọng, nơi mỗi enqueue đếm job của root không có
+  index trong khi giữ lock), các lịch của root đó chờ cho lưu lượng giảm; một index trên biểu
+  thức root là cách khắc phục đã dự định.
 
 ### Cap
 
