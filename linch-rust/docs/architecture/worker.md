@@ -291,21 +291,30 @@ has passed too, all in one transaction:
   `schedule:{id}:{fire time}`; with one, every fire is a new run in it.
 - A stored timing that no longer parses pauses its schedule (logged)
   instead of blocking the others.
-- **A held root lock delays the worker by at most 750 ms.** The batch's
-  capped roots are locked in sorted order with a blocking advisory lock, so
-  the fire waits its turn behind `enqueue` calls of the root like they wait
-  for each other, but the transaction sets `lock_timeout` to 250 ms
-  (`begin_bounded`). A root whose lock is still held then (a slow `enqueue`
-  of that root) makes the round roll back with nothing kept, and the call
-  selects again without that root: its schedules take no place in the
-  64-schedule batch, stay due, and fire once in a later call, while the
-  other roots fire in this one. A call makes at most three rounds
-  (`FIRE_ROUNDS`), so it waits at most 750 ms, and roots still held after
-  that wait for the next call; any other lock wait in the call ends it with
-  0 and nothing kept. A root that stays held skips on every call, logged at
-  `info`. The worker polls its queues right after, so no queue waits on the
-  holder. The advisory lock keys name no schema: a holder in another schema
-  of the same database counts as a holder.
+- **A held root lock delays the worker by about 250 ms, however many are
+  held.** A call fires in two phases. First, in rounds of their own, the due
+  schedules of every root whose lock is free: an uncapped root, and a capped
+  root whose advisory lock `pg_try_advisory_xact_lock` takes at once; no lock
+  is waited for here, so every root that is not held fires in every call. A
+  capped root whose lock another transaction holds is left out of the round
+  and out of the next selection (up to three rounds, `FIRE_ROUNDS`), so held
+  roots do not fill the 64-schedule batch ahead of the others. Then one of
+  the left-out roots, picked at random so that none starves behind the
+  others, waits in the root's lock queue like an `enqueue` call, in a
+  transaction of its own with `lock_timeout` 250 ms (`begin_bounded`); if
+  the lock is not its then, its schedules stay due and fire once in a later
+  call. The extra time of a call is that one wait at most, not a function of
+  the number of held roots, and a call whose roots are all free runs no
+  statement more than before. Each round commits by itself; any other lock
+  wait in a round ends it after 250 ms. A root that stays held skips in most
+  calls, logged at `info`. The worker polls its queues right after, so no
+  queue waits on the holder. The advisory lock keys name no schema: a holder
+  in another schema of the same database counts as a holder. Known limit:
+  under sustained `enqueue` traffic into one capped root so heavy that its
+  lock queue outlasts 250 ms (measured with 64 clients over a 20,000-job
+  backlog, where each enqueue counts the root's jobs without an index while
+  holding the lock), that root's schedules wait for the traffic to ease; an
+  index on the root expression is the planned remedy.
 
 ### Caps
 
