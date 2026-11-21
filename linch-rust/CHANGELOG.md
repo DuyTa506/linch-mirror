@@ -18,7 +18,7 @@ package `linch` has its own [changelog](../CHANGELOG.md).
 - **Tenants.** `mcp_urls` entries match origin and path; `eval.run` takes at most 256 cases; workflow names, branches and interrupt keys are at most 256 bytes.
 - **Model JSON deeper than 64 levels** is refused or left out: a tool input becomes a broken call the model is told about, an MCP tool whose schema is that deep is skipped.
 - **Provider `base_url` in Rust** is shown and serialized with its credentials redacted; `to_value_with_secrets` keeps them for the wire.
-- **Tool cache.** A namespace can hold one entry past its cap until the next put trims it.
+- **Tool cache.** A namespace can hold a few entries past its cap (at most the puts in flight) until the next put in it trims them.
 
 ### Added
 
@@ -36,7 +36,7 @@ package `linch` has its own [changelog](../CHANGELOG.md).
 - **Server.** SIGTERM ends a connection that reads nothing within 15 s; `run.report` fits one message; config errors and tenant policy errors repeat no secret; a tenant's `rewrite` callback keeps the operator's system sections; scheduler reads create no tables for a tenant without rights; paths are judged against the workspace.
 - **Postgres.** A lease renewal or job heartbeat after the release no longer revives it; a pruned run id cannot be created again; a claim of a missing run needs one connection; a dropped retention pass frees its lock.
 - **Tool cache puts** no longer delete an entry another put just stored, and two puts no longer deadlock (1 s stall).
-- **Worker locks.** A limited-queue dequeue gives up on a held lock after 250 ms and serves its other queues; a scheduled fire waits at most 250 ms per capped root and leaves a held root for the next call, so one slow `enqueue` no longer stops every queue and schedule.
+- **Worker locks.** A limited-queue dequeue gives up on a held lock after 250 ms and serves its other queues. A scheduled fire first fires every root whose lock is free without waiting, then lets one held root, picked at random, wait up to 250 ms in its lock queue, so held roots no longer stop other roots' schedules, however many are held; a root that stays held fires in a later call. Under enqueue traffic heavy enough that a capped root's lock queue outlasts 250 ms (measured: 64 clients over a 20,000-job backlog) that root's schedules wait for the traffic to ease; an index on the root expression is planned.
 - **Recovery.** A tool input nested 123 to 127 levels made a run that could not be cancelled or failed (now a broken call); a run stopped while it waited at the provider gate no longer loses a paid failure from its totals; a command that kills its helper at once is no longer run a second time.
 
 ## 0.2.0 - 2026-11-19
