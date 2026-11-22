@@ -7,6 +7,10 @@ reflected by `linch.RUN_SCHEMA_VERSION`.
 
 ## Unreleased
 
+### Changed
+
+- The PyPI page of `linch` lists the issue tracker, changelog and documentation links.
+
 ## 3.2.0 - 2026-11-22
 
 ### Fixed
