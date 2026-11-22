@@ -272,7 +272,7 @@ Vào `Server()` hoặc `Server.connect(...)` thực hiện thêm một lời g�
 ```python
 async with Server.connect(SOCKET, token=TOKEN) as server:
     info = server.info
-    info.server_version      # "0.1.1"
+    info.server_version      # "0.3.0"
     info.protocol            # 1: giao thức wire; client này nói từ 1 đến 1
     info.contract_version    # 1: phiên bản digest của run contract
     info.has("cache_isolation")   # một tính năng tùy chọn, theo tên

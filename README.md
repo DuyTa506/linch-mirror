@@ -165,7 +165,7 @@ allows read-only subagent calls; write/exec tools with boolean flags stay serial
 
 Kernel imports come from `linch.__all__`. Import extensions explicitly, for
 example `from linch.ext.workflow import run_workflow`; they are absent from the
-kernel's top-level exports. Status: linch-rust is at 0.1 (latest release 0.1.1), so
+kernel's top-level exports. Status: linch-rust is at 0.3 (latest release 0.3.0), so
 read its changelog before each upgrade; its own sizing numbers are in
 [Embedding](linch-rust/docs/usage/embedding.md#sizing-what-was-measured).
 

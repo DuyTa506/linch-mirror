@@ -8,6 +8,7 @@ package `linch` has its own [changelog](../CHANGELOG.md).
 
 ### Changed
 
+- The README and the version examples in the docs name 0.3.0, and the `build-agent-with-linch-rust` skill gains pitfalls for client and server of one release, Bash allow rules and file writes, and `LINCH_REAPER`.
 - The PyPI page of `linch-rust` lists the repository, issue tracker, changelog and documentation links.
 
 ## 0.3.0 - 2026-11-22

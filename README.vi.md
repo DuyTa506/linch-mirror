@@ -166,7 +166,7 @@ cho phép gọi subagent chỉ đọc; tool ghi/thực thi dùng cờ boolean v�
 Các thành phần kernel được import từ `linch.__all__`. Import phần mở rộng một cách
 tường minh, ví dụ `from linch.ext.workflow import run_workflow`; chúng không có
 trong các export ở cấp cao nhất của kernel. Trạng thái: linch-rust đang ở phiên bản 0.1
-(bản phát hành mới nhất là 0.1.1), nên hãy đọc changelog của nó trước mỗi lần nâng cấp;
+(bản phát hành mới nhất là 0.3.0), nên hãy đọc changelog của nó trước mỗi lần nâng cấp;
 số liệu định cỡ của chính SDK nằm ở
 [Embedding](linch-rust/docs/vi/usage/embedding.md#định-cỡ-những-gì-đã-được-đo).
 

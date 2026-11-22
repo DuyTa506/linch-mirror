@@ -494,7 +494,7 @@ Dù cách nào, run chỉ giữ một chỗ, nên các run đang chạy của m�
 từ chối ngay khi không khớp, thay vì lỗi ở method đầu tiên có hình dạng đã đổi.
 
 ```json
-{"server_version": "0.1.1", "protocol": 1, "contract_version": 1,
+{"server_version": "0.3.0", "protocol": 1, "contract_version": 1,
  "capabilities": ["cache_isolation", "exec_idempotency_key", "provider_info", "run_events_paging", "run_steer", "schedule", "workflow", "workflow_step_abandon"],
  "backends": ["local", "sandbox", "docker", "remote"],
  "limits": {"max_message_bytes": 16777216, "default_max_runs": 16}}

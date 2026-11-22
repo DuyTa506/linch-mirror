@@ -183,6 +183,18 @@ host tool in `asyncio.to_thread`. The server logs warnings to stderr; set `LINCH
 - **A timing number can be a frequency level.** On a host with a `powersave` governor the same work
   ran at 2.0 or 3.4 GHz, 1.7x apart. Record the CPU frequency per iteration, compare cells from one
   run, and say when a gap was not explained (`benchmarks.md`, "Known gaps").
+- **A client and a server of one release.** The handshake does not compare release numbers, and an
+  older server lacks newer capabilities: `agent.events` sends `max_bytes` only to a server that
+  advertises `run_events_paging`. Install `linch-rust` and `linch-server` together, check
+  `server.info` at startup, and read a long run in pages (`usage/runs.md`, "Long runs are read in
+  pages").
+- **Bash allow rules do not cover file writes.** An allow rule narrower than `*` asks for a command
+  that redirects to a file (`echo x > f`), and with no approval callback an ask is a refusal;
+  `2>&1` and `/dev/null` are not files. Test the rules you ship against the commands the agent
+  really runs (`usage/tools.md`, "Permission rules").
+- **Processes a command leaves behind.** `LINCH_REAPER=1` ends every process a command started when
+  the command, session or server ends; it is off by default and costs 1 to 3 ms per command
+  (`usage/sandbox.md`).
 - **Upgrading.** Run `migrate` with the upgraded binary, start servers of the upgraded build and drain the servers already running with
   SIGTERM (it releases leases; `kill -9` waits a lease). Let suspended runs finish first. The later
   build resumes what the earlier wrote, but the earlier build cannot read a run the later wrote
