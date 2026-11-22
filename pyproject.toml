@@ -22,6 +22,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/Intramind-Labs/linch"
 Repository = "https://github.com/Intramind-Labs/linch"
+Issues = "https://github.com/Intramind-Labs/linch/issues"
+Changelog = "https://github.com/Intramind-Labs/linch/blob/master/CHANGELOG.md"
+Documentation = "https://github.com/Intramind-Labs/linch/tree/master/docs"
 
 [project.scripts]
 linch = "linch.ext.scaffold:main"

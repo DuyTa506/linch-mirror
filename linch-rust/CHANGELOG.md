@@ -6,6 +6,10 @@ package `linch` has its own [changelog](../CHANGELOG.md).
 
 ## Unreleased
 
+### Changed
+
+- The PyPI page of `linch-rust` lists the repository, issue tracker, changelog and documentation links.
+
 ## 0.3.0 - 2026-11-22
 
 ### Upgrading

@@ -17,6 +17,13 @@ otel = ["opentelemetry-api>=1.20"]
 # here. A Unix socket needs nothing extra.
 websocket = ["websockets>=14"]
 
+[project.urls]
+Homepage = "https://github.com/Intramind-Labs/linch"
+Repository = "https://github.com/Intramind-Labs/linch"
+Issues = "https://github.com/Intramind-Labs/linch/issues"
+Changelog = "https://github.com/Intramind-Labs/linch/blob/master/linch-rust/CHANGELOG.md"
+Documentation = "https://github.com/Intramind-Labs/linch/tree/master/linch-rust/docs"
+
 [build-system]
 requires = ["maturin>=1.16,<2"]
 build-backend = "maturin"
