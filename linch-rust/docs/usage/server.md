@@ -272,7 +272,7 @@ returns: `server.info`, after the login. The answer is on `server.info`:
 ```python
 async with Server.connect(SOCKET, token=TOKEN) as server:
     info = server.info
-    info.server_version      # "0.1.1"
+    info.server_version      # "0.3.0"
     info.protocol            # 1: the wire protocol; this client speaks 1 to 1
     info.contract_version    # 1: the run contract digest's version
     info.has("cache_isolation")   # an optional feature, by name

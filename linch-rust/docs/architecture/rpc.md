@@ -514,7 +514,7 @@ connect and refuse a mismatch at once, instead of failing on the first
 method whose shape changed.
 
 ```json
-{"server_version": "0.1.1", "protocol": 1, "contract_version": 1,
+{"server_version": "0.3.0", "protocol": 1, "contract_version": 1,
  "capabilities": ["cache_isolation", "exec_idempotency_key", "provider_info", "run_events_paging", "run_steer", "schedule", "workflow", "workflow_step_abandon"],
  "backends": ["local", "sandbox", "docker", "remote"],
  "limits": {"max_message_bytes": 16777216, "default_max_runs": 16}}
